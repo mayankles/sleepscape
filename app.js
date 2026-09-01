@@ -313,7 +313,8 @@ const el = {
 // ---------- YouTube player ----------
 
 // Called automatically by the IFrame API script once it has loaded.
-window.onYouTubeIframeAPIReady = function () {
+function createYouTubePlayer() {
+  if (state.player) return; // both entry points below can reach this
   state.player = new YT.Player("ytPlayer", {
     height: "100%",
     width: "100%",
@@ -326,7 +327,16 @@ window.onYouTubeIframeAPIReady = function () {
       onStateChange: onPlayerStateChange,
     },
   });
-};
+}
+
+// The API calls this once, when it has finished loading.
+window.onYouTubeIframeAPIReady = createYouTubePlayer;
+
+// ...but if it finished loading before this file ran, that call has already
+// happened and is gone for good — nothing would ever build the player, and
+// every control would silently no-op on `!state.playerReady`. Script order in
+// index.html is arranged to prevent that; this covers it regardless.
+if (window.YT && window.YT.Player) createYouTubePlayer();
 
 function onPlayerReady() {
   state.playerReady = true;

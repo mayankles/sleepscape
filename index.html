@@ -197,7 +197,11 @@
     </div>
   </div>
 
-  <script src="https://www.youtube.com/iframe_api"></script>
+  <!-- app.js first: it defines window.onYouTubeIframeAPIReady, which the API
+       calls exactly once when it finishes loading. Loaded the other way
+       round, a warm-cached API can fire that callback before app.js has
+       defined it, the call is lost, and no player is ever created. -->
   <script src="app.js"></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
 </body>
 </html>

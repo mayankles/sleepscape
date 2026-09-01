@@ -9,18 +9,37 @@
 <body>
 
   <header class="topbar">
-    <div class="brand">🌙 Sleepscape</div>
+    <div class="brand"><span class="brand-moon" aria-hidden="true"></span>Sleepscape</div>
     <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
   </header>
 
   <main>
     <!-- Now playing / player -->
     <section class="player-card">
-      <div id="ytPlayer" class="yt-embed"></div>
+      <!-- The video stays collapsed by default; the orb stands in for it so
+           there's no bright rectangle at bedtime. The iframe keeps its real
+           size inside the clipped shell, so audio is unaffected. -->
+      <div class="stage" id="stage">
+        <div class="orb" aria-hidden="true">
+          <span class="orb-ring"></span>
+          <span class="orb-ring delay"></span>
+          <span class="orb-core"></span>
+        </div>
+
+        <div class="video-shell" id="videoShell">
+          <div class="video-frame">
+            <div id="ytPlayer" class="yt-embed"></div>
+          </div>
+        </div>
+      </div>
 
       <div class="now-playing">
         <div class="np-title" id="npTitle">Nothing playing yet</div>
         <div class="np-sub" id="npSub">Paste a soundscape below to get started</div>
+      </div>
+
+      <div class="video-toggle-row">
+        <button id="toggleVideoBtn" class="ghost-pill" aria-pressed="false">Show video</button>
       </div>
 
       <!-- Scrub bar -->
@@ -49,9 +68,30 @@
           <span id="timerStatus" class="timer-status">will start with playback</span>
         </div>
         <div class="timer-actions">
+          <button class="chip" data-add-min="-20">&minus;20m</button>
+          <button class="chip" data-add-min="-10">&minus;10m</button>
+          <button id="setTimerBtn" class="chip" aria-expanded="false">Set&hellip;</button>
           <button class="chip" data-add-min="10">+10m</button>
           <button class="chip" data-add-min="20">+20m</button>
           <button id="cancelTimerBtn" class="chip danger" hidden>Cancel</button>
+        </div>
+
+        <!-- Exact-length setter, revealed by "Set…" -->
+        <div id="timerSetPanel" class="timer-set hidden">
+          <div class="timer-presets">
+            <button class="chip preset" data-set-min="15">15m</button>
+            <button class="chip preset" data-set-min="30">30m</button>
+            <button class="chip preset" data-set-min="45">45m</button>
+            <button class="chip preset" data-set-min="60">1h</button>
+            <button class="chip preset" data-set-min="90">1h 30m</button>
+            <button class="chip preset" data-set-min="120">2h</button>
+          </div>
+          <form id="timerSetForm" class="timer-set-custom">
+            <label for="timerSetInput">Set to</label>
+            <input id="timerSetInput" type="number" min="1" max="600" step="1" />
+            <span class="timer-set-unit">min</span>
+            <button type="submit" class="ctl-btn small">Set</button>
+          </form>
         </div>
       </div>
     </section>
@@ -60,24 +100,55 @@
     <section class="source-card">
       <div class="tabs">
         <button class="tab-btn active" data-tab="shortlist">My Soundscapes</button>
-        <button class="tab-btn" data-tab="playlist">Playlist URL</button>
+        <button class="tab-btn" data-tab="playlist">Playlists</button>
       </div>
 
       <div class="tab-panel" id="tab-shortlist">
         <ul id="shortlistItems" class="shortlist"></ul>
         <form id="addShortlistForm" class="add-row">
-          <input id="addTitle" type="text" placeholder="Name (e.g. Rain on tent)" autocomplete="off" />
-          <input id="addUrl" type="text" placeholder="Paste YouTube video URL" autocomplete="off" required />
-          <button type="submit" class="ctl-btn small">Add</button>
+          <input id="addTitle" type="text" placeholder="Name (optional)" autocomplete="off" />
+          <input id="addUrl" type="text" placeholder="Paste a link, or search YouTube" autocomplete="off" required />
+          <button type="submit" class="ctl-btn small">Go</button>
         </form>
+        <p class="hint">Paste a video link to save it, or just type what you're
+          after — "rain on a tent" — to search.</p>
+
+        <div id="videoResults" class="results" hidden>
+          <div class="results-head">
+            <span class="results-label" id="videoResultsLabel">Results</span>
+            <button type="button" class="ghost-pill" id="videoResultsClose">Clear</button>
+          </div>
+          <ul class="result-list" id="videoResultList"></ul>
+        </div>
       </div>
 
       <div class="tab-panel hidden" id="tab-playlist">
         <form id="playlistForm" class="add-row">
-          <input id="playlistUrl" type="text" placeholder="Paste a YouTube playlist URL" autocomplete="off" required />
-          <button type="submit" class="ctl-btn small">Load</button>
+          <input id="playlistUrl" type="text" placeholder="Paste a playlist link, or search" autocomplete="off" required />
+          <button type="submit" class="ctl-btn small">Go</button>
         </form>
-        <p class="hint">Loads the full playlist; use ⏮ ⏭ to move between tracks.</p>
+        <p class="hint">Paste a playlist link to load it, or type words to search
+          for one. Use ⏮ ⏭ to move between tracks, or pick one below.</p>
+
+        <div id="playlistResults" class="results" hidden>
+          <div class="results-head">
+            <span class="results-label" id="playlistResultsLabel">Results</span>
+            <button type="button" class="ghost-pill" id="playlistResultsClose">Clear</button>
+          </div>
+          <ul class="result-list" id="playlistResultList"></ul>
+        </div>
+
+        <!-- Track list for the loaded playlist -->
+        <div id="trackListWrap" hidden>
+          <div class="track-head">
+            <span class="track-head-label">Tracks</span>
+            <div class="track-head-actions">
+              <span id="trackCount" class="track-count"></span>
+              <button type="button" class="ghost-pill" id="savePlaylistBtn">Save playlist</button>
+            </div>
+          </div>
+          <ul id="trackList" class="track-list"></ul>
+        </div>
       </div>
     </section>
   </main>
@@ -109,6 +180,18 @@
         <span>Skip step (seconds)</span>
         <input id="skipStepInput" type="number" min="5" max="120" step="5" />
       </label>
+
+      <label class="field">
+        <span>YouTube API key — enables search</span>
+        <input id="apiKeyInput" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Paste your own key to search" />
+      </label>
+
+      <p class="hint">Searching uses YouTube's official Data API, which needs a
+        free key of your own (console.cloud.google.com → enable "YouTube Data
+        API v3" → create an API key). It's stored only in this browser and is
+        sent only to Google, only when you search. Without a key everything
+        else works exactly as before — pasting links included.</p>
 
       <p class="hint">Settings are saved on this Mac only (local browser storage) — nothing leaves your machine.</p>
     </div>

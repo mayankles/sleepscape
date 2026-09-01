@@ -37,11 +37,23 @@ bare `file://` page — the launcher spins up Python's built-in web server
 ## Using it
 
 - **My Soundscapes tab** — paste a YouTube video URL (and optionally a
-  name) to save it to your local shortlist. Click any saved title to play
-  it. Everything is stored only in your browser's local storage on this
-  Mac — nothing is sent anywhere.
-- **Playlist URL tab** — paste a full YouTube playlist link to play through
-  it, with ⏮ / ⏭ to move between tracks.
+  name) to save it to your local shortlist, or just type what you're after
+  ("rain on a tent") to search YouTube. Click a result to play it, or
+  **Save** to keep it. Click any saved title to play it. Everything is
+  stored only in your browser's local storage on this Mac — nothing is sent
+  anywhere.
+- **Playlists tab** — paste a full YouTube playlist link to play through
+  it, or type words to search for a playlist. ⏮ / ⏭ move between tracks.
+  **Save playlist**, above the track list, keeps it in My Soundscapes
+  alongside your individual soundscapes, so it's one click away next time.
+  A playlist comes with its own name from YouTube. The full track list appears below
+  the box once it loads: click any track to jump straight to it, and the
+  one currently playing stays highlighted as the playlist moves along.
+- **The video stays hidden** by default — a soft glow stands in for it, so
+  there's no bright rectangle at bedtime, and it brightens gently while
+  something is playing. **Show video** brings the picture back if you want
+  it, and it remembers which way you left it. Sound keeps playing either
+  way.
 - **Scrub bar** — click or drag anywhere on it to jump to that point in the
   track. « 30 / 30 » nudge by a fixed step (default 30s, changeable in
   Settings).
@@ -49,15 +61,44 @@ bare `file://` page — the launcher spins up Python's built-in web server
   playing (using your default length from Settings). It counts down in
   real time (not paused when you pause the video), fades the volume down
   over the last stretch instead of cutting out abruptly, then pauses.
-  +10m / +20m extend it on the fly; Cancel turns it off for that session
-  only, without changing your default.
+  −20m / −10m / +10m / +20m adjust it on the fly, and **Set…** opens
+  preset lengths (15m up to 2h) plus a box for an exact number of minutes.
+  Adjustments won't take the timer below one minute, so a mistaken tap
+  can't cut the sound off. Cancel turns it off for that session only,
+  without changing your default.
 - **Settings (gear icon)** — default timer length, fade-out duration, skip
   step, and whether the timer should auto-arm at all.
+
+## Turning on search (optional)
+
+Pasting links works out of the box. Searching needs a free YouTube API key
+of your own, because YouTube doesn't allow searching from a page like this
+one without it:
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com), make
+   a project (any name).
+2. Enable **YouTube Data API v3** for it.
+3. Create an **API key** under Credentials, and copy it.
+4. Paste it into Sleepscape's Settings (the gear, top right).
+
+The key is stored only in this browser, and is sent only to Google, only
+when you actually search. The free allowance is roughly **100 searches a
+day**, which resets at midnight Pacific — plenty for finding a few
+soundscapes, but it's why there's no search-as-you-type here.
 
 ## Notes / limitations
 
 - Embedded YouTube videos still show YouTube's normal ads unless you have
   YouTube Premium on the browser you're using — same as today.
+- Occasionally YouTube won't allow a video to play outside youtube.com —
+  usually because it requires a signed-in viewer. Sleepscape marks those
+  **unavailable** in the track list and skips past them rather than letting
+  the night stall on one, so a playlist keeps going. Nothing can be done
+  about it from here; replacing the track in the playlist is the fix.
+- Track names in the playlist list are looked up from YouTube's public
+  oEmbed endpoint and remembered locally, so a playlist you've opened
+  before lists instantly. A track that's private or deleted shows its
+  video ID instead of a name.
 - Only public/unlisted playlists and videos will load, same as any YouTube
   embed.
 - Settings and your shortlist live in the browser's local storage. If you

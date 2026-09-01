@@ -36,7 +36,12 @@ bare `file://` page — the launcher spins up Python's built-in web server
 
 ## Using it
 
-- **My Soundscapes tab** — paste a YouTube video URL (and optionally a
+- **My Soundscapes tab** — starts with a handful of ready-made playlists
+  (ambient, wind & rain, gentle piano, nature sounds). Delete any you don't
+  want; they won't come back. Click the **✎** on any entry to rename it —
+  useful because YouTube doesn't publish a name for some playlists, which
+  would otherwise show up as "Playlist (81 tracks)".
+  You can also paste a YouTube video URL (and optionally a
   name) to save it to your local shortlist, or just type what you're after
   ("rain on a tent") to search YouTube. Click a result to play it, or
   **Save** to keep it. Click any saved title to play it. Everything is

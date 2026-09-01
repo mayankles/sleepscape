@@ -20,6 +20,8 @@ const DEFAULT_SETTINGS = {
   fadeSeconds: 30,
   autoArm: true,
   skipStep: 30,
+  // Preset playlist ids already offered; see mergeNewPresets().
+  seededPresets: [],
   // Supplied by the user in Settings; enables search. Empty by default, and
   // everything except search works fine without it.
   apiKey: "",
@@ -47,23 +49,43 @@ function saveSettings(settings) {
   }
 }
 
-// Seeded on first run only. Once anything has been saved — including an
-// empty list after deleting everything — the stored value wins and this is
-// never consulted again.
-const DEFAULT_SHORTLIST = [
+// Presets offered to every install — see mergeNewPresets() for how they're
+// added without resurrecting ones the user has deleted. The names here are
+// deliberate: YouTube Music's auto-generated playlists have no oEmbed
+// record, so there's no title to look up and they'd otherwise show as
+// "Playlist (81 tracks)".
+const PRESET_PLAYLISTS = [
   {
-    id: "seed-nature-sounds",
-    kind: "playlist",
+    id: "preset-nature-sounds",
     title: "Sleepscape — Nature Sounds",
     playlistId: "PLYHw0b71CtIQ",
-    url: "https://www.youtube.com/playlist?list=PLYHw0b71CtIQ",
+  },
+  {
+    id: "preset-ambient-music",
+    title: "Ambient Music",
+    playlistId: "RDCLAK5uy_l2OjbOL4oVkkHE86UT6oQCNufuv8d0luQ",
+  },
+  {
+    id: "preset-wind-and-rain",
+    title: "Wind & Rain",
+    playlistId: "RDCLAK5uy_kGcITlIUh14Xy7FgqGiLtEJtKoDax4TkI",
+  },
+  {
+    id: "preset-gentle-piano",
+    title: "Gentle Piano",
+    playlistId: "RDCLAK5uy_ldooV6iHaoPy6VKyVuHDq0DT4lh-3tRqQ",
+  },
+  {
+    id: "preset-nature-short",
+    title: "Nature Sounds (Short Tracks)",
+    playlistId: "RDCLAK5uy_mSTV5z2uzELcKu99EJcQxfuDZwO6CMLFM",
   },
 ];
 
 function loadShortlist() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.shortlist);
-    if (!raw) return DEFAULT_SHORTLIST.map((item) => ({ ...item }));
+    if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
@@ -202,6 +224,13 @@ const state = {
     id: null,
     ids: [],
     index: -1,
+    // Track array of the playlist we're switching away from, and whether
+    // we're still waiting for the player to stop reporting it.
+    previousSignature: "",
+    awaitingTurnover: false,
+    // Candidate awaiting confirmation by a second identical read.
+    pendingSignature: null,
+    loadedAt: 0,
     // Bumped on every playlist load so in-flight title fetches from a
     // previous playlist can tell they're stale and drop their results.
     loadToken: 0,
@@ -216,6 +245,10 @@ const unplayableVideos = new Set();
 // How many bad tracks in a row to skip past before giving up and saying so,
 // rather than racing through a whole broken playlist.
 const MAX_AUTO_SKIPS = 3;
+
+// How long to disregard playlist reads after a load, while the player's
+// getPlaylist() catches up with getPlaylistId().
+const PLAYLIST_SETTLE_MS = 1200;
 
 // A sleep timer shorter than this isn't useful, so +/- adjustments and the
 // exact-length setter both clamp here rather than cutting playback dead.
@@ -439,10 +472,31 @@ function playPlaylistById(playlistId) {
   el.npTitle.textContent = "Loading playlist…";
   el.npSub.textContent = "";
   setTransportPlaylistMode(true);
+
+  // Captured before clearPlaylistTracks() wipes them; syncPlaylistState()
+  // uses these to tell a real load from a stale read.
+  const previousId = state.playlist.id;
+  const previousSignature = state.playlist.ids.join(",");
+
   clearPlaylistTracks();
   state.playlist.id = playlistId;
+  state.playlist.previousSignature = previousSignature;
+  // Only when actually switching: reloading the same playlist legitimately
+  // yields the same tracks and must not wait for a turnover that never comes.
+  state.playlist.awaitingTurnover = Boolean(previousId && previousId !== playlistId);
+  state.playlist.loadedAt = Date.now();
   state.skipStreak = 0;
   restorePlayerVolume();
+
+  // Stop before loading. Without this the player loads one playlist behind
+  // on repeated loadPlaylist() calls — getPlaylistId() reports the new list
+  // while getPlaylist() and the actually-playing video are still the
+  // previous one, so switching between saved playlists plays the wrong
+  // thing. Verified against the raw player with all app polling disabled.
+  try {
+    state.player.stopVideo();
+  } catch (e) {}
+
   state.player.loadPlaylist({ listType: "playlist", list: playlistId });
   watchForPlaylistTracks();
   armPlaybackWatchdog();
@@ -768,6 +822,35 @@ function attachTimerEvents() {
 
 // ---------- Shortlist ----------
 
+// Adds any preset the user has never been offered. `settings.seededPresets`
+// records every preset id we've handed over, so deleting one keeps it gone
+// while a genuinely new preset still arrives on an existing install.
+function mergeNewPresets() {
+  const seeded = new Set(state.settings.seededPresets || []);
+  let addedAny = false;
+
+  PRESET_PLAYLISTS.forEach((preset) => {
+    if (seeded.has(preset.playlistId)) return;
+    seeded.add(preset.playlistId);
+
+    // Don't duplicate one the user already saved for themselves.
+    if (state.shortlist.some((x) => x.playlistId === preset.playlistId)) return;
+
+    state.shortlist.push({
+      id: preset.id,
+      kind: "playlist",
+      title: preset.title,
+      playlistId: preset.playlistId,
+      url: playlistUrlFor(preset.playlistId),
+    });
+    addedAny = true;
+  });
+
+  state.settings.seededPresets = [...seeded];
+  saveSettings(state.settings);
+  if (addedAny) saveShortlist(state.shortlist);
+}
+
 function shortlistKind(item) {
   return item.kind || (item.playlistId ? "playlist" : "video");
 }
@@ -810,8 +893,18 @@ function renderShortlist() {
       li.appendChild(badge);
     }
 
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "si-action";
+    renameBtn.textContent = "✎";
+    renameBtn.title = "Rename";
+    renameBtn.setAttribute("aria-label", `Rename ${item.title || ""}`);
+    renameBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      beginRename(item, title);
+    });
+
     const removeBtn = document.createElement("button");
-    removeBtn.className = "si-remove";
+    removeBtn.className = "si-action si-remove";
     removeBtn.textContent = "✕";
     removeBtn.title = "Remove";
     removeBtn.addEventListener("click", () => {
@@ -822,6 +915,7 @@ function renderShortlist() {
     });
 
     li.appendChild(title);
+    li.appendChild(renameBtn);
     li.appendChild(removeBtn);
     el.shortlistItems.appendChild(li);
   });
@@ -846,6 +940,44 @@ async function addToShortlist(videoId, customTitle, url) {
   });
   saveShortlist(state.shortlist);
   renderShortlist();
+}
+
+// Swaps the title for an input in place. Auto-generated playlists have no
+// title to look up, so a name you choose is often the only good one.
+function beginRename(item, titleEl) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "si-rename";
+  input.value = item.title || "";
+  input.setAttribute("aria-label", "New name");
+
+  let settled = false;
+  const finish = (commit) => {
+    if (settled) return; // blur fires again after Enter re-renders
+    settled = true;
+    const next = input.value.trim();
+    // An empty name would leave an unclickable blank row, so keep the old one.
+    if (commit && next && next !== item.title) {
+      item.title = next;
+      saveShortlist(state.shortlist);
+    }
+    renderShortlist();
+  };
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      finish(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener("blur", () => finish(true));
+
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
 }
 
 function attachShortlistEvents() {
@@ -924,6 +1056,9 @@ function clearPlaylistTracks() {
   state.playlist.ids = [];
   state.playlist.index = -1;
   state.playlist.loadToken += 1;
+  state.playlist.awaitingTurnover = false;
+  state.playlist.previousSignature = "";
+  state.playlist.pendingSignature = null;
   renderTrackList();
   updateSavePlaylistBtn();
 }
@@ -938,10 +1073,14 @@ function watchForPlaylistTracks() {
     if (syncPlaylistState()) {
       clearInterval(state.playlist.pollId);
       state.playlist.pollId = null;
-    } else if (tries > 25) {
+    } else if (tries > 40) {
       clearInterval(state.playlist.pollId);
       state.playlist.pollId = null;
-      onPlaylistLoadFailed();
+      // Out of patience: a playlist whose tracks genuinely match the previous
+      // one would otherwise look like a failure, so take what the player has
+      // before concluding nothing loaded.
+      state.playlist.awaitingTurnover = false;
+      if (!syncPlaylistState()) onPlaylistLoadFailed();
     }
   }, 300);
 }
@@ -962,15 +1101,50 @@ function syncPlaylistState() {
 
   let ids = null;
   let index = -1;
+  let loadedId = null;
   try {
     ids = state.player.getPlaylist();
     index = state.player.getPlaylistIndex();
+    loadedId = state.player.getPlaylistId();
   } catch (e) {
     return false;
   }
   if (!Array.isArray(ids) || ids.length === 0) return false;
 
-  const isNewPlaylist = ids.join(",") !== state.playlist.ids.join(",");
+  // Two separate staleness problems after loadPlaylist():
+  //
+  //   1. getPlaylistId() can still name the outgoing playlist.
+  //   2. getPlaylistId() flips to the new one BEFORE getPlaylist() catches
+  //      up, so "the ids agree" is not enough on its own — the track array
+  //      can still belong to the playlist we just left.
+  //
+  // So wait for the id to match *and* for the contents to actually turn over
+  // from what the previous playlist had. Accepting early is what made
+  // switching between presets show the wrong tracks.
+  if (state.playlist.id && loadedId && loadedId !== state.playlist.id) return false;
+
+  // getPlaylist() lags getPlaylistId() by roughly one load, so reads taken
+  // right after loadPlaylist() can describe the playlist we just left. Give
+  // the player a moment before trusting anything.
+  if (Date.now() - state.playlist.loadedAt < PLAYLIST_SETTLE_MS) return false;
+
+  const signature = ids.join(",");
+  if (state.playlist.awaitingTurnover && signature === state.playlist.previousSignature) {
+    return false;
+  }
+
+  // ...and require the same answer twice running. A lagging read changes as
+  // the player catches up, so a repeated one is settled. This is belt and
+  // braces on top of the settle window: switching playlists quickly used to
+  // show the previous playlist's tracks under the new playlist's name.
+  if (state.playlist.pendingSignature !== signature) {
+    state.playlist.pendingSignature = signature;
+    return false;
+  }
+
+  state.playlist.awaitingTurnover = false;
+
+  const isNewPlaylist = signature !== state.playlist.ids.join(",");
   const movedTrack = index !== state.playlist.index;
   state.playlist.ids = ids;
   state.playlist.index = index;
@@ -1471,6 +1645,7 @@ function init() {
 
   setTransportPlaylistMode(false);
   applyVideoVisibility();
+  mergeNewPresets();
   renderShortlist();
   updateSavePlaylistBtn();
   updateTimerUI();

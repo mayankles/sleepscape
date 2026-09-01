@@ -67,6 +67,20 @@ Shipped (v1):
 - Settings overlay: default timer length, fade-out length, skip step,
   auto-arm on/off.
 
+Shipped (v1.5) — presets and custom names:
+- `PRESET_PLAYLISTS` ships five playlists. `mergeNewPresets()` adds any the
+  user has never been offered, recording every id in
+  `settings.seededPresets` — so a deleted preset stays deleted, while a
+  newly added one still reaches existing installs. This replaced the old
+  "seed only when storage is empty" approach, which couldn't deliver new
+  presets to anyone who already had the app.
+- **Shortlist entries can be renamed** (`beginRename()`), swapping the title
+  for an input in place. This isn't cosmetic: four of the five presets are
+  YouTube Music auto-generated playlists, which have **no oEmbed record at
+  all** (404, not 401), so there is no title to look up and they would
+  otherwise read "Playlist (81 tracks)". A hand-typed name is the only good
+  name available for them.
+
 Shipped (v1.4) — playlists in the shortlist, and unplayable tracks:
 - **The shortlist holds playlists as well as videos.** Entries carry
   `kind: "video" | "playlist"`; `shortlistKind()` infers it for anything
@@ -188,6 +202,28 @@ lowercase letters" means words.
 character string, so "rainsounds" and even "not-a-playlist" parsed as
 playlist IDs — which broke search routing and was already a latent bug.
 
+## loadPlaylist() loads one playlist behind — stopVideo() first
+
+**Always call `player.stopVideo()` immediately before
+`player.loadPlaylist()`.** Without it, repeated loads on the same player
+return the *previous* playlist: `getPlaylistId()` reports the newly
+requested list while `getPlaylist()` — and the video that actually starts
+playing — are still the one before. Clicking between saved playlists played
+the wrong one every time.
+
+This was verified against the raw player with all app polling and watchdogs
+disabled, so it is the IFrame API's behavior and not something in this code.
+`stopVideo()` immediately before the load fixes it completely, with no delay
+needed between the two calls.
+
+`syncPlaylistState()` additionally refuses to trust a read until
+`getPlaylistId()` matches what was requested, `PLAYLIST_SETTLE_MS` has
+elapsed since the load, the contents have turned over from the outgoing
+playlist, and the same track array comes back twice running. Those guards
+were written before the `stopVideo()` fix was found and are now belt and
+braces — but the API misreported state in enough different ways that they're
+worth keeping.
+
 ## Videos YouTube won't play in an embed
 
 Some videos load their metadata but never play here. Track 3 of the default
@@ -219,6 +255,14 @@ when giving up, or a later state flicker would restart the skipping.
 can't resolve still shows a name in the list rather than a raw ID.
 
 ## Track titles (why oEmbed)
+
+Note that oEmbed has two distinct failure modes here, and they mean
+different things: **401** is a restricted video (see below), while **404**
+is simply "no oEmbed record" — which is what all four YouTube Music
+`RDCLAK5uy_*` playlists return for the playlist URL itself. Their individual
+tracks do resolve normally, so track lists still show real names; it's only
+the playlist's own title that can't be looked up.
+
 
 The IFrame API's `getPlaylist()` returns bare video IDs and no titles. Real
 names would otherwise mean a YouTube Data API key plus a quota, which
@@ -257,6 +301,9 @@ There's no test suite. When changing `app.js`, at minimum:
   standing fixture. Test *both* routes: clicking it directly, and natural
   advance (play track 2, `seekTo(getDuration() - 3)`, wait ~10s). They take
   different code paths and only the second one matters overnight.
+- When touching playlist loading, always test *switching between* playlists,
+  not just loading one. A single load looks correct even when switching is
+  broken — that's exactly how the one-playlist-behind bug survived.
 - Also exercise the timer chips (+/− and the floor: hold −20m down to
   1:00 and confirm the subtract chips disable) and the track list (load a
   playlist, click a row mid-list, confirm the highlight follows ⏭ and

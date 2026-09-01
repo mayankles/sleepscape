@@ -676,17 +676,34 @@ main {
   padding: 3px 8px;
 }
 
-.shortlist-item .si-remove {
+.shortlist-item .si-action {
+  flex-shrink: 0;
   background: transparent;
   border: none;
   color: var(--text-faint);
   cursor: pointer;
   font-size: 12px;
-  padding: 4px 6px;
+  padding: 4px 7px;
   border-radius: var(--r-pill);
   transition: color 0.25s, background 0.25s;
 }
+.shortlist-item .si-action:hover { color: var(--ember); background: var(--ember-wash); }
 .shortlist-item .si-remove:hover { color: var(--danger); background: rgba(232, 143, 143, 0.12); }
+
+/* Replaces the title in place while renaming. */
+.si-rename {
+  flex: 1;
+  min-width: 0;
+  background: rgba(14, 12, 21, 0.5);
+  border: none;
+  color: var(--text);
+  border-radius: 9px;
+  padding: 6px 10px;
+  font-size: 13.5px;
+  font-family: inherit;
+  box-shadow: inset 0 0 0 1px var(--ember-line);
+}
+.si-rename:focus { outline: none; }
 
 .empty-hint {
   color: var(--text-faint);

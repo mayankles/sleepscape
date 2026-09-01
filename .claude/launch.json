@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sleepscape",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-c",
+        "import http.server as h; C=h.SimpleHTTPRequestHandler; _e=C.end_headers; C.end_headers=lambda s:(s.send_header('Cache-Control','no-store, max-age=0'), _e(s)); h.test(HandlerClass=C, port=8791)"
+      ],
+      "port": 8791
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sleepscape</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">🌙 Sleepscape</div>
+    <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+  </header>
+
+  <main>
+    <!-- Now playing / player -->
+    <section class="player-card">
+      <div id="ytPlayer" class="yt-embed"></div>
+
+      <div class="now-playing">
+        <div class="np-title" id="npTitle">Nothing playing yet</div>
+        <div class="np-sub" id="npSub">Paste a soundscape below to get started</div>
+      </div>
+
+      <!-- Scrub bar -->
+      <div class="scrub-row">
+        <span class="time" id="curTime">0:00</span>
+        <div class="scrub-track" id="scrubTrack">
+          <div class="scrub-fill" id="scrubFill"></div>
+          <div class="scrub-handle" id="scrubHandle"></div>
+        </div>
+        <span class="time" id="durTime">0:00</span>
+      </div>
+
+      <!-- Transport controls -->
+      <div class="transport">
+        <button id="skipBackBtn" class="ctl-btn" title="Back 30s">« 30</button>
+        <button id="prevBtn" class="ctl-btn ghost" title="Previous in playlist">⏮</button>
+        <button id="playPauseBtn" class="ctl-btn primary" title="Play/Pause">▶</button>
+        <button id="nextBtn" class="ctl-btn ghost" title="Next in playlist">⏭</button>
+        <button id="skipFwdBtn" class="ctl-btn" title="Forward 30s">30 »</button>
+      </div>
+
+      <!-- Sleep timer strip -->
+      <div class="timer-strip">
+        <div class="timer-info">
+          <span class="timer-label">Sleep timer</span>
+          <span id="timerStatus" class="timer-status">will start with playback</span>
+        </div>
+        <div class="timer-actions">
+          <button class="chip" data-add-min="10">+10m</button>
+          <button class="chip" data-add-min="20">+20m</button>
+          <button id="cancelTimerBtn" class="chip danger" hidden>Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Source tabs: playlist url vs saved shortlist -->
+    <section class="source-card">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="shortlist">My Soundscapes</button>
+        <button class="tab-btn" data-tab="playlist">Playlist URL</button>
+      </div>
+
+      <div class="tab-panel" id="tab-shortlist">
+        <ul id="shortlistItems" class="shortlist"></ul>
+        <form id="addShortlistForm" class="add-row">
+          <input id="addTitle" type="text" placeholder="Name (e.g. Rain on tent)" autocomplete="off" />
+          <input id="addUrl" type="text" placeholder="Paste YouTube video URL" autocomplete="off" required />
+          <button type="submit" class="ctl-btn small">Add</button>
+        </form>
+      </div>
+
+      <div class="tab-panel hidden" id="tab-playlist">
+        <form id="playlistForm" class="add-row">
+          <input id="playlistUrl" type="text" placeholder="Paste a YouTube playlist URL" autocomplete="off" required />
+          <button type="submit" class="ctl-btn small">Load</button>
+        </form>
+        <p class="hint">Loads the full playlist; use ⏮ ⏭ to move between tracks.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Settings panel -->
+  <div id="settingsOverlay" class="overlay hidden">
+    <div class="settings-panel">
+      <div class="settings-head">
+        <h2>Settings</h2>
+        <button id="closeSettingsBtn" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+
+      <label class="field">
+        <span>Default sleep timer (minutes)</span>
+        <input id="defaultTimerInput" type="number" min="1" max="300" step="1" />
+      </label>
+
+      <label class="field">
+        <span>Fade-out length before pausing (seconds)</span>
+        <input id="fadeSecondsInput" type="number" min="0" max="120" step="5" />
+      </label>
+
+      <label class="field checkbox">
+        <input id="autoArmInput" type="checkbox" />
+        <span>Automatically start the sleep timer whenever playback begins</span>
+      </label>
+
+      <label class="field">
+        <span>Skip step (seconds)</span>
+        <input id="skipStepInput" type="number" min="5" max="120" step="5" />
+      </label>
+
+      <p class="hint">Settings are saved on this Mac only (local browser storage) — nothing leaves your machine.</p>
+    </div>
+  </div>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="app.js"></script>
+</body>
+</html>

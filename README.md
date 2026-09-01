@@ -11,7 +11,7 @@ was scoped out for a later pass.
 
 Once this is pushed to GitHub with Pages enabled, it'll be live at:
 
-`https://<your-github-username>.github.io/sleepscape/`
+[`https://mayankles.github.io/sleepscape/`](https://mayankles.github.io/sleepscape/)
 
 (see **Deploying to GitHub Pages** below). No server, no build — Pages
 just serves the static files as-is, and being served over `https://`
@@ -76,7 +76,7 @@ the files already in this repo.
 3. Under **Build and deployment**, set **Source** to `Deploy from a
    branch`, branch `main`, folder `/ (root)`. Save.
 4. GitHub builds it in under a minute; the URL appears at the top of that
-   same Pages settings page (`https://<username>.github.io/sleepscape/`).
+   same Pages settings page ([`https://mayankles.github.io/sleepscape/`](https://mayankles.github.io/sleepscape/)).
 
 Notes:
 - The repo needs to be **public** for Pages to be free; a private repo

@@ -73,6 +73,34 @@ bare `file://` page — the launcher spins up Python's built-in web server
   without changing your default.
 - **Settings (gear icon)** — default timer length, fade-out duration, skip
   step, and whether the timer should auto-arm at all.
+- **Reorder your saved list** by dragging the grip on the left of any
+  row, or by clicking a grip and using the ↑ / ↓ keys. Rename anything
+  with the pencil icon — useful for playlists whose real names are
+  unhelpful or missing.
+
+## Keyboard shortcuts
+
+| Key | Does |
+| --- | --- |
+| `Space` or `K` | Play / pause |
+| `←` or `J` | Back by the skip step |
+| `→` or `L` | Forward by the skip step |
+| `P` / `N` | Previous / next track in a playlist |
+| `V` | Show or hide the video |
+| `T` | Open the sleep timer length panel |
+
+They're listed in Settings too, and they stand down while you're typing in
+a field.
+
+## Picking up where you left off
+
+Sleepscape remembers the last playlist and track and brings them back when
+you reload — **cued, not playing**. A reloaded tab will never start making
+noise on its own; press play when you're ready.
+
+The sleep timer now follows playback: pause the track and the countdown
+holds where it is, resuming when you press play. Setting a length from the
+**Set…** panel also makes it your new default, so it sticks between nights.
 
 ## Turning on search (optional)
 

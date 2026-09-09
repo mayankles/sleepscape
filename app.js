@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
   settings: "sleepscape.settings.v1",
   shortlist: "sleepscape.shortlist.v1",
   titles: "sleepscape.titles.v1",
+  session: "sleepscape.session.v1",
 };
 
 const DEFAULT_SETTINGS = {
@@ -80,6 +81,11 @@ const PRESET_PLAYLISTS = [
     title: "Nature Sounds (Short Tracks)",
     playlistId: "RDCLAK5uy_mSTV5z2uzELcKu99EJcQxfuDZwO6CMLFM",
   },
+  {
+    id: "preset-guided-meditation",
+    title: "Guided Sleep Meditation",
+    playlistId: "PLwRp13WDIrMPzLqtyvvPrs7sMR_lvZ8Bf",
+  },
 ];
 
 function loadShortlist() {
@@ -99,6 +105,28 @@ function saveShortlist(list) {
     localStorage.setItem(STORAGE_KEYS.shortlist, JSON.stringify(list));
   } catch (e) {
     console.warn("Couldn't save shortlist", e);
+  }
+}
+
+// What was loaded last night, so a refresh comes back to the same place.
+// Restored *cued*, never playing — see restoreSession().
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.session);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch (e) {
+    console.warn("Couldn't read last session", e);
+    return null;
+  }
+}
+
+function saveSession(session) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
+  } catch (e) {
+    console.warn("Couldn't save session", e);
   }
 }
 
@@ -341,6 +369,21 @@ if (window.YT && window.YT.Player) createYouTubePlayer();
 function onPlayerReady() {
   state.playerReady = true;
   state.player.setVolume(100);
+  restoreSession();
+}
+
+// Brings back whatever was loaded last time, cued rather than playing. The
+// point is to pick up where you left off without a 3am room suddenly filling
+// with sound because a tab reloaded.
+function restoreSession() {
+  const last = loadSession();
+  if (!last) return;
+
+  if (last.mode === "playlist" && last.playlistId) {
+    playPlaylistById(last.playlistId, { index: last.index || 0, autoplay: false });
+  } else if (last.mode === "single" && last.videoId) {
+    playSingleVideo(last.videoId, last.title, { autoplay: false });
+  }
 }
 
 function onPlayerStateChange(event) {
@@ -368,6 +411,7 @@ function onPlayerStateChange(event) {
 
     if (event.data === PlayerState.PAUSED || event.data === PlayerState.ENDED) {
       el.playPauseBtn.textContent = "▶";
+      updateTimerUI();
     } else if (event.data === PlayerState.CUED) {
       syncPlaylistState();
       updateNowPlayingFromPlayer();
@@ -464,20 +508,33 @@ function updateNowPlayingFromPlayer() {
   }
 }
 
-function playSingleVideo(videoId, title) {
+function playSingleVideo(videoId, title, options) {
   if (!state.playerReady) return;
+  const autoplay = !options || options.autoplay !== false;
+
   state.mode = "single";
   el.npTitle.textContent = title || "Loading…";
-  el.npSub.textContent = "Playing";
+  el.npSub.textContent = autoplay ? "Playing" : "Ready — press play";
   setTransportPlaylistMode(false);
   clearPlaylistTracks();
   restorePlayerVolume();
-  state.player.loadVideoById(videoId);
-  armPlaybackWatchdog();
+
+  if (autoplay) {
+    state.player.loadVideoById(videoId);
+    // Only worth watching for a stall when we actually asked it to play.
+    armPlaybackWatchdog();
+  } else {
+    state.player.cueVideoById(videoId);
+  }
+
+  saveSession({ mode: "single", videoId, title: title || "" });
 }
 
-function playPlaylistById(playlistId) {
+function playPlaylistById(playlistId, options) {
   if (!state.playerReady) return;
+  const startIndex = (options && options.index) || 0;
+  const autoplay = !options || options.autoplay !== false;
+
   state.mode = "playlist";
   el.npTitle.textContent = "Loading playlist…";
   el.npSub.textContent = "";
@@ -507,10 +564,19 @@ function playPlaylistById(playlistId) {
     state.player.stopVideo();
   } catch (e) {}
 
-  state.player.loadPlaylist({ listType: "playlist", list: playlistId });
+  const args = { listType: "playlist", list: playlistId, index: startIndex };
+  if (autoplay) {
+    state.player.loadPlaylist(args);
+    armPlaybackWatchdog();
+  } else {
+    // Restoring on startup: bring the playlist back without breaking the
+    // silence. cuePlaylist loads the metadata but waits to be told to play.
+    state.player.cuePlaylist(args);
+  }
+
   watchForPlaylistTracks();
-  armPlaybackWatchdog();
   updateSavePlaylistBtn();
+  saveSession({ mode: "playlist", playlistId, index: startIndex });
 }
 
 function setTransportPlaylistMode(isPlaylist) {
@@ -630,6 +696,15 @@ function attachScrubEvents() {
 
 // ---------- Transport controls ----------
 
+function isPlayingNow() {
+  if (!state.playerReady) return false;
+  try {
+    return state.player.getPlayerState() === window.YT.PlayerState.PLAYING;
+  } catch (e) {
+    return false;
+  }
+}
+
 function togglePlayPause() {
   if (!state.playerReady) return;
   const s = state.player.getPlayerState();
@@ -654,22 +729,88 @@ function skipBy(deltaSeconds) {
   state.player.seekTo(target, true);
 }
 
+function previousTrack() {
+  if (state.mode !== "playlist" || !state.playerReady) return;
+  state.skipStreak = 0;
+  state.player.previousVideo();
+  armPlaybackWatchdog();
+}
+
+function nextTrack() {
+  if (state.mode !== "playlist" || !state.playerReady) return;
+  state.skipStreak = 0;
+  state.player.nextVideo();
+  armPlaybackWatchdog();
+}
+
 function attachTransportEvents() {
   el.playPauseBtn.addEventListener("click", togglePlayPause);
   el.skipBackBtn.addEventListener("click", () => skipBy(-state.settings.skipStep));
   el.skipFwdBtn.addEventListener("click", () => skipBy(state.settings.skipStep));
-  el.prevBtn.addEventListener("click", () => {
-    if (state.mode === "playlist" && state.playerReady) state.player.previousVideo();
-  });
-  el.nextBtn.addEventListener("click", () => {
-    if (state.mode === "playlist" && state.playerReady) state.player.nextVideo();
+  el.prevBtn.addEventListener("click", previousTrack);
+  el.nextBtn.addEventListener("click", nextTrack);
+}
+
+// ---------- Keyboard shortcuts ----------
+
+// Typing a soundscape name shouldn't scrub the track, so every shortcut
+// stands down while a field has focus.
+function isTypingTarget(node) {
+  if (!node) return false;
+  const tag = node.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || node.isContentEditable;
+}
+
+function attachKeyboardShortcuts() {
+  document.addEventListener("keydown", (e) => {
+    if (isTypingTarget(e.target)) return;
+    // Leave browser and OS combinations alone.
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // The settings overlay owns the keyboard while it's open (Escape closes
+    // it), and the grips own the arrow keys while one is focused.
+    if (!el.settingsOverlay.classList.contains("hidden")) return;
+    if (e.target && e.target.classList && e.target.classList.contains("si-grip")) return;
+
+    switch (e.key) {
+      case " ":
+      case "k":
+        togglePlayPause();
+        break;
+      case "ArrowLeft":
+      case "j":
+        skipBy(-state.settings.skipStep);
+        break;
+      case "ArrowRight":
+      case "l":
+        skipBy(state.settings.skipStep);
+        break;
+      case "p":
+        previousTrack();
+        break;
+      case "n":
+        nextTrack();
+        break;
+      case "v":
+        el.toggleVideoBtn.click();
+        break;
+      case "t":
+        toggleTimerSetPanel();
+        break;
+      default:
+        return; // not ours: leave the event alone
+    }
+    // Only reached for a key we handled — stops Space scrolling the page
+    // and the arrows moving the scroll position.
+    e.preventDefault();
   });
 }
 
 // ---------- Sleep timer ----------
-// Runs on wall-clock time, independent of play/pause, so pausing to use
-// the bathroom doesn't quietly extend your night. It arms itself the
-// first time playback starts in a session — no extra taps needed.
+// The countdown follows playback: pause the track and the timer holds where
+// it is, resuming when you press play. (It previously ran on wall-clock time
+// regardless, on the reasoning that pausing shouldn't quietly extend your
+// night — that was reversed deliberately, so a pause means a pause.) It arms
+// itself the first time playback starts in a session — no extra taps needed.
 
 function maybeAutoArmTimer() {
   if (state.timer.armed) return;
@@ -703,6 +844,16 @@ function addMinutesToTimer(minutes) {
 // Set the timer to an exact length, arming it if it wasn't already running.
 function setTimerMinutes(minutes) {
   const mins = clampNumber(minutes, 1, 600, state.settings.defaultTimerMinutes);
+
+  // Choosing a length deliberately also makes it the new default, so it
+  // survives a refresh and auto-arms at that length tomorrow. The +/- chips
+  // deliberately don't do this — they're nudges for tonight, not a new
+  // preference.
+  if (mins !== state.settings.defaultTimerMinutes && mins <= 300) {
+    state.settings.defaultTimerMinutes = mins;
+    saveSettings(state.settings);
+  }
+
   restorePlayerVolume();
   armTimer(Math.max(MIN_TIMER_SECONDS, mins * 60));
   closeTimerSetPanel();
@@ -722,6 +873,14 @@ function cancelTimer() {
 
 function timerTick() {
   if (!state.timer.armed) return;
+
+  // Held, not stopped: the interval keeps running so the display stays
+  // live, but nothing counts down while playback is paused.
+  if (!isPlayingNow()) {
+    updateTimerUI();
+    return;
+  }
+
   state.timer.remaining -= 1;
 
   const fadeWindow = state.settings.fadeSeconds;
@@ -755,9 +914,16 @@ function timerTick() {
 function updateTimerUI() {
   if (state.timer.armed) {
     const fading = state.settings.fadeSeconds > 0 && state.timer.remaining <= state.settings.fadeSeconds;
-    el.timerStatus.textContent = fading
-      ? `fading out — ${formatTime(state.timer.remaining)} left`
-      : `${formatTime(state.timer.remaining)} remaining`;
+    const held = !isPlayingNow();
+    let status;
+    if (fading) {
+      status = `fading out — ${formatTime(state.timer.remaining)} left`;
+    } else if (held) {
+      status = `${formatTime(state.timer.remaining)} remaining — paused`;
+    } else {
+      status = `${formatTime(state.timer.remaining)} remaining`;
+    }
+    el.timerStatus.textContent = status;
     el.cancelTimerBtn.hidden = false;
   } else {
     el.timerStatus.textContent = state.settings.autoArm
@@ -861,6 +1027,33 @@ function mergeNewPresets() {
   if (addedAny) saveShortlist(state.shortlist);
 }
 
+// Index of the row currently being dragged, shared across every row's
+// handlers for the duration of one drag.
+let shortlistDragIndex = null;
+
+function clearDropMarkers() {
+  el.shortlistItems.querySelectorAll(".shortlist-item").forEach((row) => {
+    row.classList.remove("drop-before", "drop-after");
+  });
+}
+
+function moveShortlistItem(from, to, refocusGrip) {
+  if (from === null || to === null) return;
+  if (from === to || to < 0 || to >= state.shortlist.length) return;
+
+  const [moved] = state.shortlist.splice(from, 1);
+  state.shortlist.splice(to, 0, moved);
+  saveShortlist(state.shortlist);
+  renderShortlist();
+
+  // Re-rendering drops focus, which would strand a keyboard user after one
+  // press; put it back on the same row at its new position.
+  if (refocusGrip) {
+    const grips = el.shortlistItems.querySelectorAll(".si-grip");
+    if (grips[to]) grips[to].focus();
+  }
+}
+
 function shortlistKind(item) {
   return item.kind || (item.playlistId ? "playlist" : "video");
 }
@@ -876,11 +1069,67 @@ function renderShortlist() {
     return;
   }
 
-  state.shortlist.forEach((item) => {
+  state.shortlist.forEach((item, index) => {
     const kind = shortlistKind(item);
 
     const li = document.createElement("li");
     li.className = "shortlist-item";
+
+    // Reordering is driven from the grip alone, never the whole row: making
+    // the row itself draggable makes the rename field awkward to select in
+    // and turns a slightly-moved click into a drag instead of playback.
+    const grip = document.createElement("span");
+    grip.className = "si-grip";
+    grip.textContent = "⠿";
+    grip.tabIndex = 0;
+    grip.setAttribute("role", "button");
+    grip.title = "Drag to reorder, or focus and use ↑ / ↓";
+    grip.setAttribute("aria-label", `Reorder ${item.title || ""}`);
+
+    grip.addEventListener("mousedown", () => {
+      li.draggable = true;
+    });
+    // Keyboard path, so reordering doesn't require a mouse.
+    grip.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        moveShortlistItem(index, index - 1, true);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        moveShortlistItem(index, index + 1, true);
+      }
+    });
+
+    li.addEventListener("dragstart", (e) => {
+      shortlistDragIndex = index;
+      li.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      // Firefox won't start a drag unless some data is set.
+      e.dataTransfer.setData("text/plain", String(index));
+    });
+    li.addEventListener("dragend", () => {
+      li.draggable = false;
+      li.classList.remove("dragging");
+      shortlistDragIndex = null;
+      clearDropMarkers();
+    });
+    li.addEventListener("dragover", (e) => {
+      if (shortlistDragIndex === null || shortlistDragIndex === index) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      clearDropMarkers();
+      li.classList.add(shortlistDragIndex < index ? "drop-after" : "drop-before");
+    });
+    li.addEventListener("dragleave", () => {
+      li.classList.remove("drop-before", "drop-after");
+    });
+    li.addEventListener("drop", (e) => {
+      e.preventDefault();
+      clearDropMarkers();
+      moveShortlistItem(shortlistDragIndex, index, false);
+    });
+
+    li.appendChild(grip);
 
     const title = document.createElement("span");
     title.className = "si-title";
@@ -1158,6 +1407,10 @@ function syncPlaylistState() {
   const movedTrack = index !== state.playlist.index;
   state.playlist.ids = ids;
   state.playlist.index = index;
+
+  if (movedTrack && state.playlist.id) {
+    saveSession({ mode: "playlist", playlistId: state.playlist.id, index });
+  }
 
   if (isNewPlaylist || movedTrack) {
     renderTrackList();
@@ -1605,6 +1858,7 @@ function openSettings() {
 }
 
 function closeSettings() {
+  if (persistSettingsFromForm) persistSettingsFromForm();
   el.settingsOverlay.classList.add("hidden");
 }
 
@@ -1628,11 +1882,20 @@ function attachSettingsEvents() {
     updateTimerUI();
   };
 
+  // "change" alone only fires on blur or Enter, so a value typed and then
+  // abandoned by closing the panel (Escape especially) was silently lost.
+  // "input" fires on every keystroke, and closeSettings() persists again as
+  // a backstop for any path that skips both.
   [el.defaultTimerInput, el.fadeSecondsInput, el.skipStepInput, el.apiKeyInput].forEach((input) => {
     input.addEventListener("change", persist);
+    input.addEventListener("input", persist);
   });
   el.autoArmInput.addEventListener("change", persist);
+  persistSettingsFromForm = persist;
 }
+
+// Assigned by attachSettingsEvents so closeSettings() can flush the form.
+let persistSettingsFromForm = null;
 
 function clampNumber(value, min, max, fallback) {
   const n = parseInt(value, 10);
@@ -1652,6 +1915,7 @@ function init() {
   attachSettingsEvents();
   attachVideoToggleEvents();
   attachSearchEvents();
+  attachKeyboardShortcuts();
 
   setTransportPlaylistMode(false);
   applyVideoVisibility();

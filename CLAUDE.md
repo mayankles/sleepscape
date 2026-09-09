@@ -59,27 +59,86 @@ only needed for local development against uncommitted changes.
 
 Shipped (v1):
 - Custom scrub bar (click/drag to seek), skip ±30s (configurable).
-- Sleep timer that auto-arms on first play, runs on wall-clock time
-  (independent of pause state), fades volume out over a configurable
-  window before pausing, +10m/+20m quick-extend, cancel-for-tonight.
+- Sleep timer that auto-arms on first play, fades volume out over a
+  configurable window before pausing, +10m/+20m quick-extend,
+  cancel-for-tonight. (It originally ran on wall-clock time regardless of
+  pause state; as of v1.7 it follows playback instead — see below.)
 - "My Soundscapes" shortlist (paste a video URL + name, saved locally) and
   a separate "paste a playlist URL" flow, with ⏮/⏭ in playlist mode.
 - Settings overlay: default timer length, fade-out length, skip step,
   auto-arm on/off.
 
+Shipped (v1.7) — persistence, timer follows playback, keyboard:
+
+- **The timer now pauses with playback.** `timerTick()` returns early unless
+  `isPlayingNow()`, and the status line reads "— paused". This **reverses**
+  the original design note, which held that a timer running on wall-clock
+  time meant a midnight bathroom trip couldn't quietly extend your night.
+  The owner asked for the opposite: a pause should mean a pause. Don't
+  "restore" the old behaviour on the strength of that earlier reasoning.
+  The interval keeps ticking while held so the display stays live — only
+  the decrement is skipped.
+
+- **Settings persisted on `input`, not just `change`.** `change` on a number
+  field only fires on blur or Enter, so a value typed and then abandoned by
+  closing the panel — Escape especially — was silently dropped. Both events
+  now persist, and `closeSettings()` flushes the form as a backstop. If you
+  add a settings field, wire it into the same `persist` list or it will have
+  the same bug.
+
+- **`setTimerMinutes()` also updates `settings.defaultTimerMinutes`,** so a
+  length chosen from the "Set…" panel survives a refresh and auto-arms at
+  that length next time. The +/- chips deliberately do *not* — they're
+  nudges for tonight, not a change of preference.
+
+- **The last playlist and track are restored on load, cued and silent.**
+  `saveSession()` records `{mode, playlistId, index}` (or `{mode, videoId}`)
+  on every load and track change; `restoreSession()` runs from
+  `onPlayerReady()`. It calls `cuePlaylist`/`cueVideoById`, never
+  `loadPlaylist`/`loadVideoById` — the whole point is coming back to where
+  you were **without** a reloaded tab suddenly filling a dark room with
+  sound. `playPlaylistById`/`playSingleVideo` take `{index, autoplay}` for
+  this; the playback watchdog is only armed when `autoplay` is true, since
+  a cued player is *supposed* to sit at UNSTARTED.
+
+- **Keyboard shortcuts** (`attachKeyboardShortcuts()`): Space/K play-pause,
+  ←/J and →/L seek by the skip step, P/N previous and next track, V video,
+  T timer panel. Three guards matter and are easy to break:
+  `isTypingTarget()` stands the whole layer down while a field has focus
+  (otherwise typing a soundscape name scrubs the track); the layer is inert
+  while the settings overlay is open; and a focused reorder grip keeps the
+  arrow keys for itself. `preventDefault()` is called only for keys actually
+  handled, so unrelated keys still reach the browser.
+
+Shipped (v1.6) — reordering:
+- **Saved entries can be reordered** by dragging the `⠿` grip, or by
+  focusing a grip and pressing ↑/↓. `moveShortlistItem()` splices the array
+  and persists; the keyboard path restores focus to the moved row's grip
+  afterwards, since `renderShortlist()` rebuilds the list and would
+  otherwise strand a keyboard user after a single press.
+- Only the grip starts a drag, never the row: `mousedown` on the grip sets
+  `li.draggable = true` and `dragend` clears it. Making the whole row
+  draggable turns a slightly-moved click into a drag instead of playback,
+  and makes the rename field awkward to select text in.
+- The grip needs `order: -2` because the playlist badge already carries
+  `order: -1`; without it the handle sits *after* the badge instead of at
+  the row's leading edge.
+
 Shipped (v1.5) — presets and custom names:
-- `PRESET_PLAYLISTS` ships five playlists. `mergeNewPresets()` adds any the
+- `PRESET_PLAYLISTS` ships six playlists. `mergeNewPresets()` adds any the
   user has never been offered, recording every id in
   `settings.seededPresets` — so a deleted preset stays deleted, while a
   newly added one still reaches existing installs. This replaced the old
   "seed only when storage is empty" approach, which couldn't deliver new
   presets to anyone who already had the app.
 - **Shortlist entries can be renamed** (`beginRename()`), swapping the title
-  for an input in place. This isn't cosmetic: four of the five presets are
+  for an input in place. This isn't cosmetic: four of the six presets are
   YouTube Music auto-generated playlists, which have **no oEmbed record at
   all** (404, not 401), so there is no title to look up and they would
   otherwise read "Playlist (81 tracks)". A hand-typed name is the only good
-  name available for them.
+  name available for them. The two ordinary `PL…` presets do resolve a real
+  oEmbed title — the preset list hardcodes names for all six anyway, so a
+  preset's name never depends on a network call.
 
 Shipped (v1.4) — playlists in the shortlist, and unplayable tracks:
 - **The shortlist holds playlists as well as videos.** Entries carry
@@ -304,6 +363,17 @@ There's no test suite. When changing `app.js`, at minimum:
 - When touching playlist loading, always test *switching between* playlists,
   not just loading one. A single load looks correct even when switching is
   broken — that's exactly how the one-playlist-behind bug survived.
+- Reordering has two independent paths and both need exercising: dragging
+  a grip, and focusing a grip then pressing ↑/↓. Check the ends too — ↑ on
+  the first row and ↓ on the last must be no-ops rather than wrapping or
+  throwing. After a drag, confirm no row is left with `draggable` still
+  true and no stray `drop-before`/`drop-after` marker remains.
+- The keyboard layer's guards are the part that breaks: check that Space
+  typed into the Name field doesn't pause, that arrows in the URL field
+  don't seek, that shortcuts do nothing while Settings is open, and that
+  arrows on a focused grip reorder rather than seek.
+- For session restore, check the player comes back **CUED and not PLAYING**.
+  Autoplaying on load is the failure mode that actually matters here.
 - Also exercise the timer chips (+/− and the floor: hold −20m down to
   1:00 and confirm the subtract chips disable) and the track list (load a
   playlist, click a row mid-list, confirm the highlight follows ⏭ and

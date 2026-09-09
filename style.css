@@ -631,7 +631,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  max-height: 264px;
+  max-height: 340px;
   overflow-y: auto;
 }
 
@@ -662,6 +662,31 @@ main {
   transition: color 0.25s;
 }
 .shortlist-item .si-title:hover { color: var(--ember); }
+
+.si-grip {
+  /* Ahead of the badge, which carries order:-1, so the handle stays at the
+     row's leading edge where a grip is expected. */
+  order: -2;
+  flex-shrink: 0;
+  cursor: grab;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: -1px;
+  padding: 4px 2px;
+  border-radius: 6px;
+  opacity: 0.5;
+  transition: opacity 0.25s, color 0.25s;
+}
+.shortlist-item:hover .si-grip { opacity: 1; }
+.si-grip:hover, .si-grip:focus-visible { color: var(--ember); opacity: 1; }
+.si-grip:active { cursor: grabbing; }
+
+.shortlist-item.dragging { opacity: 0.4; }
+
+/* Where the row will land, drawn as a warm seam rather than a moving gap. */
+.shortlist-item.drop-before { box-shadow: inset 0 2px 0 0 var(--ember); }
+.shortlist-item.drop-after { box-shadow: inset 0 -2px 0 0 var(--ember); }
 
 .si-badge {
   order: -1;
@@ -1051,6 +1076,44 @@ input.invalid:focus {
   height: 17px;
   accent-color: var(--ember);
   flex-shrink: 0;
+}
+
+.shortcuts {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--hairline);
+}
+.shortcuts-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.shortcut-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  align-items: center;
+}
+.shortcut-list dt { display: flex; gap: 5px; align-items: center; }
+.shortcut-list dd { margin: 0; }
+
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  text-align: center;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 3px 7px;
+  font-family: inherit;
+  font-size: 11px;
+  box-shadow: inset 0 0 0 1px var(--hairline);
 }
 
 /* ---------- Motion preferences ---------- */

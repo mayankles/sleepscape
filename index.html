@@ -61,6 +61,22 @@
         <button id="skipFwdBtn" class="ctl-btn" title="Forward 30s">30 »</button>
       </div>
 
+      <!-- Tracks of whatever playlist is playing. Lives with the player, not
+           the library, so changing track never means leaving the controls.
+           The header toggles the list; its open/closed state is remembered. -->
+      <div id="trackListWrap" class="tracks-drawer" hidden>
+        <div class="track-head">
+          <button type="button" class="tracks-toggle" id="toggleTracksBtn"
+                  aria-expanded="true" aria-controls="trackList">
+            <span class="tracks-chevron" aria-hidden="true"></span>
+            <span class="track-head-label">Tracks</span>
+            <span id="trackCount" class="track-count"></span>
+          </button>
+          <button type="button" class="ghost-pill" id="savePlaylistBtn">Save playlist</button>
+        </div>
+        <ul id="trackList" class="track-list"></ul>
+      </div>
+
       <!-- Sleep timer strip -->
       <div class="timer-strip">
         <div class="timer-info">
@@ -96,59 +112,29 @@
       </div>
     </section>
 
-    <!-- Source tabs: playlist url vs saved shortlist -->
-    <section class="source-card">
-      <div class="tabs">
-        <button class="tab-btn active" data-tab="shortlist">My Soundscapes</button>
-        <button class="tab-btn" data-tab="playlist">Playlists</button>
+    <!-- Library: everything saved, plus one field that takes any link or a
+         search. Replaces the old My Soundscapes / Playlists tabs. -->
+    <section class="library-card">
+      <div class="library-head">
+        <span class="section-label">Library</span>
       </div>
 
-      <div class="tab-panel" id="tab-shortlist">
-        <ul id="shortlistItems" class="shortlist"></ul>
-        <form id="addShortlistForm" class="add-row">
-          <input id="addTitle" type="text" placeholder="Name (optional)" autocomplete="off" />
-          <input id="addUrl" type="text" placeholder="Paste a link, or search YouTube" autocomplete="off" required />
-          <button type="submit" class="ctl-btn small">Go</button>
-        </form>
-        <p class="hint">Paste a video link to save it, or just type what you're
-          after — "rain on a tent" — to search.</p>
+      <ul id="shortlistItems" class="shortlist"></ul>
 
-        <div id="videoResults" class="results" hidden>
-          <div class="results-head">
-            <span class="results-label" id="videoResultsLabel">Results</span>
-            <button type="button" class="ghost-pill" id="videoResultsClose">Clear</button>
-          </div>
-          <ul class="result-list" id="videoResultList"></ul>
+      <form id="addForm" class="add-row">
+        <input id="addInput" type="text" placeholder="Paste a link, or search YouTube" autocomplete="off" required />
+        <button type="submit" class="ctl-btn small">Go</button>
+      </form>
+      <p class="hint">A playlist link starts playing; a video link is saved here.
+        Or type what you're after — "rain on a tent" — to search. Drag ⠿ to
+        reorder, ✎ to rename.</p>
+
+      <div id="searchResults" class="results" hidden>
+        <div class="results-head">
+          <span class="results-label" id="searchResultsLabel">Results</span>
+          <button type="button" class="ghost-pill" id="searchResultsClose">Clear</button>
         </div>
-      </div>
-
-      <div class="tab-panel hidden" id="tab-playlist">
-        <form id="playlistForm" class="add-row">
-          <input id="playlistUrl" type="text" placeholder="Paste a playlist link, or search" autocomplete="off" required />
-          <button type="submit" class="ctl-btn small">Go</button>
-        </form>
-        <p class="hint">Paste a playlist link to load it, or type words to search
-          for one. Use ⏮ ⏭ to move between tracks, or pick one below.</p>
-
-        <div id="playlistResults" class="results" hidden>
-          <div class="results-head">
-            <span class="results-label" id="playlistResultsLabel">Results</span>
-            <button type="button" class="ghost-pill" id="playlistResultsClose">Clear</button>
-          </div>
-          <ul class="result-list" id="playlistResultList"></ul>
-        </div>
-
-        <!-- Track list for the loaded playlist -->
-        <div id="trackListWrap" hidden>
-          <div class="track-head">
-            <span class="track-head-label">Tracks</span>
-            <div class="track-head-actions">
-              <span id="trackCount" class="track-count"></span>
-              <button type="button" class="ghost-pill" id="savePlaylistBtn">Save playlist</button>
-            </div>
-          </div>
-          <ul id="trackList" class="track-list"></ul>
-        </div>
+        <ul class="result-list" id="searchResultList"></ul>
       </div>
     </section>
   </main>

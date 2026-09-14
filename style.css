@@ -193,7 +193,7 @@ main {
   gap: 20px;
 }
 
-.player-card, .source-card {
+.player-card, .library-card {
   background: linear-gradient(
     170deg,
     rgba(255, 248, 242, 0.055),
@@ -375,7 +375,10 @@ main {
   font-variant-numeric: tabular-nums;
   font-size: 11.5px;
   color: var(--text-faint);
-  width: 40px;
+  /* A floor, not a fixed width: these are 8-11 hour videos, and "11:16:58"
+     overran a fixed 40px straight past the card's edge. */
+  min-width: 40px;
+  flex-shrink: 0;
   text-align: center;
   letter-spacing: 0.4px;
 }
@@ -590,37 +593,18 @@ main {
 }
 .chip:disabled { opacity: 0.26; cursor: default; }
 
-/* ---------- Tabs ---------- */
+/* ---------- Library ---------- */
 
-.tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 18px;
-  padding: 4px;
-  background: rgba(14, 12, 21, 0.4);
-  border-radius: var(--r-pill);
-  box-shadow: inset 0 0 0 1px var(--hairline);
+.library-head {
+  margin-bottom: 14px;
 }
-.tab-btn {
-  flex: 1;
-  background: transparent;
-  border: none;
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
   color: var(--text-faint);
-  border-radius: var(--r-pill);
-  padding: 9px 14px;
-  font-size: 12.5px;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  transition: color 0.25s, background 0.3s var(--ease-soft);
 }
-.tab-btn:hover { color: var(--text-dim); }
-.tab-btn.active {
-  background: var(--surface-hi);
-  color: var(--text);
-  box-shadow: inset 0 1px 0 rgba(255, 245, 235, 0.09), var(--shadow-soft);
-}
-
-.tab-panel.hidden { display: none; }
 
 /* ---------- Lists (shortlist + playlist tracks) ---------- */
 
@@ -739,12 +723,41 @@ main {
 
 .track-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  margin-top: 20px;
-  padding-top: 18px;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 16px;
   border-top: 1px solid var(--hairline);
 }
+
+/* The whole header left of "Save playlist" toggles the list. */
+.tracks-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: transparent;
+  border: none;
+  padding: 4px 8px 4px 2px;
+  margin-left: -2px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.25s;
+}
+.tracks-toggle:hover { background: var(--surface); }
+
+/* A drawn chevron, so it takes the palette and can rotate smoothly. */
+.tracks-chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--text-faint);
+  border-bottom: 1.5px solid var(--text-faint);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.3s var(--ease-soft);
+}
+.tracks-drawer.collapsed .tracks-chevron { transform: rotate(-45deg); }
+.tracks-drawer.collapsed .track-list { display: none; }
 .track-head-actions {
   display: flex;
   align-items: center;
@@ -761,13 +774,16 @@ main {
 .track-count { font-size: 11.5px; color: var(--text-faint); }
 
 .track-list {
+  /* Positioned so each row's offsetTop is measured from the list, which is
+     what scrollTrackIntoList() relies on. */
+  position: relative;
   list-style: none;
   margin: 12px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 7px;
-  max-height: 288px;
+  max-height: 264px;
   overflow-y: auto;
 }
 

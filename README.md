@@ -36,24 +36,25 @@ bare `file://` page — the launcher spins up Python's built-in web server
 
 ## Using it
 
-- **My Soundscapes tab** — starts with a handful of ready-made playlists
-  (ambient, wind & rain, gentle piano, nature sounds). Delete any you don't
-  want; they won't come back. Click the **✎** on any entry to rename it —
-  useful because YouTube doesn't publish a name for some playlists, which
-  would otherwise show up as "Playlist (81 tracks)".
-  You can also paste a YouTube video URL (and optionally a
-  name) to save it to your local shortlist, or just type what you're after
-  ("rain on a tent") to search YouTube. Click a result to play it, or
-  **Save** to keep it. Click any saved title to play it. Everything is
-  stored only in your browser's local storage on this Mac — nothing is sent
-  anywhere.
-- **Playlists tab** — paste a full YouTube playlist link to play through
-  it, or type words to search for a playlist. ⏮ / ⏭ move between tracks.
-  **Save playlist**, above the track list, keeps it in My Soundscapes
-  alongside your individual soundscapes, so it's one click away next time.
-  A playlist comes with its own name from YouTube. The full track list appears below
-  the box once it loads: click any track to jump straight to it, and the
-  one currently playing stays highlighted as the playlist moves along.
+- **Library** — everything you've saved, playlists and single videos
+  together. It starts with a handful of ready-made playlists; delete any you
+  don't want and they won't come back. Click a name to play it, drag the
+  **⠿** handle to reorder, and click **✎** to rename — useful because
+  YouTube doesn't publish a name for some playlists, which would otherwise
+  show up as "Playlist (81 tracks)". Everything is stored only in your
+  browser's local storage on this Mac — nothing is sent anywhere.
+- **One box for adding things**, under the Library. Paste a playlist link
+  and it starts playing; paste a video link and it's saved to the Library;
+  or type what you're after ("rain on a tent") to search for videos and
+  playlists at once. Click a result to play it, or **Save** to keep it.
+  A YouTube link that points at a video *inside* a playlist plays the
+  playlist starting from that video.
+- **Tracks** — whenever a playlist is playing, its track list sits right in
+  the player, under the controls. Click any track to jump to it; the one
+  playing stays highlighted as the playlist moves along. Click the
+  **Tracks** heading to fold the list away, and it remembers which way you
+  left it. **Save playlist** there keeps the current playlist in your
+  Library.
 - **The video stays hidden** by default — a soft glow stands in for it, so
   there's no bright rectangle at bedtime, and it brightens gently while
   something is playing. **Show video** brings the picture back if you want
@@ -63,8 +64,8 @@ bare `file://` page — the launcher spins up Python's built-in web server
   track. « 30 / 30 » nudge by a fixed step (default 30s, changeable in
   Settings).
 - **Sleep timer** — arms itself automatically the moment something starts
-  playing (using your default length from Settings). It counts down in
-  real time (not paused when you pause the video), fades the volume down
+  playing (using your default length from Settings). It pauses when you
+  pause the sound and picks up again when you press play, fades the volume down
   over the last stretch instead of cutting out abruptly, then pauses.
   −20m / −10m / +10m / +20m adjust it on the fly, and **Set…** opens
   preset lengths (15m up to 2h) plus a box for an exact number of minutes.

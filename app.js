@@ -29,6 +29,9 @@ const DEFAULT_SETTINGS = {
   // The video is dead weight for a soundscape and bright at bedtime, so it
   // stays collapsed until asked for. Remembered between nights.
   showVideo: false,
+  // Whether the player's track list is expanded. Starts open, since changing
+  // tracks easily is the point of it, then remembers what you last chose.
+  tracksOpen: true,
 };
 
 function loadSettings() {
@@ -259,6 +262,9 @@ const state = {
     // Candidate awaiting confirmation by a second identical read.
     pendingSignature: null,
     loadedAt: 0,
+    // From a pasted watch link carrying both v= and list=: jump to this video
+    // once the track order is known. loadPlaylist() only accepts an index.
+    pendingStartVideoId: null,
     // Bumped on every playlist load so in-flight title fetches from a
     // previous playlist can tell they're stale and drop their results.
     loadToken: 0,
@@ -314,19 +320,13 @@ const el = {
   trackCount: document.getElementById("trackCount"),
   savePlaylistBtn: document.getElementById("savePlaylistBtn"),
   shortlistItems: document.getElementById("shortlistItems"),
-  addShortlistForm: document.getElementById("addShortlistForm"),
-  addTitle: document.getElementById("addTitle"),
-  addUrl: document.getElementById("addUrl"),
-  playlistForm: document.getElementById("playlistForm"),
-  playlistUrl: document.getElementById("playlistUrl"),
-  videoResults: document.getElementById("videoResults"),
-  videoResultList: document.getElementById("videoResultList"),
-  videoResultsLabel: document.getElementById("videoResultsLabel"),
-  videoResultsClose: document.getElementById("videoResultsClose"),
-  playlistResults: document.getElementById("playlistResults"),
-  playlistResultList: document.getElementById("playlistResultList"),
-  playlistResultsLabel: document.getElementById("playlistResultsLabel"),
-  playlistResultsClose: document.getElementById("playlistResultsClose"),
+  addForm: document.getElementById("addForm"),
+  addInput: document.getElementById("addInput"),
+  searchResults: document.getElementById("searchResults"),
+  searchResultList: document.getElementById("searchResultList"),
+  searchResultsLabel: document.getElementById("searchResultsLabel"),
+  searchResultsClose: document.getElementById("searchResultsClose"),
+  toggleTracksBtn: document.getElementById("toggleTracksBtn"),
   settingsBtn: document.getElementById("settingsBtn"),
   settingsOverlay: document.getElementById("settingsOverlay"),
   closeSettingsBtn: document.getElementById("closeSettingsBtn"),
@@ -335,7 +335,6 @@ const el = {
   autoArmInput: document.getElementById("autoArmInput"),
   skipStepInput: document.getElementById("skipStepInput"),
   apiKeyInput: document.getElementById("apiKeyInput"),
-  tabBtns: document.querySelectorAll(".tab-btn"),
 };
 
 // ---------- YouTube player ----------
@@ -534,6 +533,7 @@ function playPlaylistById(playlistId, options) {
   if (!state.playerReady) return;
   const startIndex = (options && options.index) || 0;
   const autoplay = !options || options.autoplay !== false;
+  const startVideoId = (options && options.startVideoId) || null;
 
   state.mode = "playlist";
   el.npTitle.textContent = "Loading playlist…";
@@ -552,6 +552,7 @@ function playPlaylistById(playlistId, options) {
   // yields the same tracks and must not wait for a turnover that never comes.
   state.playlist.awaitingTurnover = Boolean(previousId && previousId !== playlistId);
   state.playlist.loadedAt = Date.now();
+  state.playlist.pendingStartVideoId = startVideoId;
   state.skipStreak = 0;
   restorePlayerVolume();
 
@@ -1137,8 +1138,6 @@ function renderShortlist() {
     title.title = kind === "playlist" ? "Load this playlist" : "Play";
     title.addEventListener("click", () => {
       if (kind === "playlist") {
-        // Switch tabs so the track list is visible for what just loaded.
-        activateTab("playlist");
         playPlaylistById(item.playlistId);
       } else {
         playSingleVideo(item.videoId, item.title);
@@ -1239,53 +1238,45 @@ function beginRename(item, titleEl) {
   input.select();
 }
 
-function attachShortlistEvents() {
-  // One field, two jobs: a link is saved, anything else is searched.
-  el.addShortlistForm.addEventListener("submit", async (e) => {
+// One field for everything. What it does depends on what you give it:
+//   - a playlist link loads and plays it — from the linked video, when a
+//     watch URL carries both v= and list=, which is almost always what
+//     copying such a link means;
+//   - a video link saves it to the library;
+//   - something that only looks like a link is flagged, not searched;
+//   - anything else searches for videos and playlists together.
+function attachAddFormEvents() {
+  el.addForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const raw = el.addUrl.value.trim();
+    const raw = el.addInput.value.trim();
     if (!raw) return;
 
-    const videoId = looksLikeWords(raw) ? null : parseVideoId(raw);
+    const words = looksLikeWords(raw);
+    const videoId = words ? null : parseVideoId(raw);
+    // A bare 11-character string is a video ID, even one that happens to
+    // start with a playlist prefix like "PL".
+    const listId = /^[a-zA-Z0-9_-]{11}$/.test(raw) ? null : parsePlaylistId(raw);
+
+    if (listId) {
+      clearResults();
+      el.addForm.reset();
+      playPlaylistById(listId, { startVideoId: videoId });
+      return;
+    }
 
     if (videoId) {
-      clearResults("video");
-      const customTitle = el.addTitle.value.trim();
-      el.addShortlistForm.reset();
-      await addToShortlist(videoId, customTitle, raw);
-      return;
-    }
-
-    // Clearly meant as a link but unparseable — say so rather than searching.
-    if (looksLikeUrl(raw)) {
-      flashInvalid(el.addUrl);
-      return;
-    }
-
-    runSearch(raw, "video", el.addUrl);
-  });
-}
-
-function attachPlaylistFormEvents() {
-  // Same split as the shortlist field: a link loads, words search.
-  el.playlistForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const raw = el.playlistUrl.value.trim();
-    if (!raw) return;
-
-    const listId = parsePlaylistId(raw);
-    if (listId) {
-      clearResults("playlist");
-      playPlaylistById(listId);
+      clearResults();
+      el.addForm.reset();
+      await addToShortlist(videoId, "", raw);
       return;
     }
 
     if (looksLikeUrl(raw)) {
-      flashInvalid(el.playlistUrl);
+      flashInvalid(el.addInput);
       return;
     }
 
-    runSearch(raw, "playlist", el.playlistUrl);
+    runSearch(raw);
   });
 }
 
@@ -1318,6 +1309,7 @@ function clearPlaylistTracks() {
   state.playlist.awaitingTurnover = false;
   state.playlist.previousSignature = "";
   state.playlist.pendingSignature = null;
+  state.playlist.pendingStartVideoId = null;
   renderTrackList();
   updateSavePlaylistBtn();
 }
@@ -1350,7 +1342,6 @@ function onPlaylistLoadFailed() {
   if (state.playlist.ids.length > 0) return;
   el.npTitle.textContent = "Couldn't load that playlist";
   el.npSub.textContent = "Check the link — it may be private or unlisted.";
-  flashInvalid(el.playlistUrl);
 }
 
 // Pulls the current track order and position off the player. Returns true
@@ -1420,6 +1411,14 @@ function syncPlaylistState() {
     updateNowPlayingFromPlayer();
   }
   if (isNewPlaylist) fetchTrackTitles(ids, state.playlist.loadToken);
+
+  if (isNewPlaylist && state.playlist.pendingStartVideoId) {
+    const startAt = ids.indexOf(state.playlist.pendingStartVideoId);
+    state.playlist.pendingStartVideoId = null;
+    // Auto-generated playlists can reshuffle per load, so the video may not
+    // be in this run of it at all; then just play from the top.
+    if (startAt > 0) playTrackAt(startAt);
+  }
   return true;
 }
 
@@ -1452,6 +1451,7 @@ function renderTrackList() {
 
   el.trackListWrap.hidden = false;
   el.trackCount.textContent = `${ids.length} track${ids.length === 1 ? "" : "s"}`;
+  applyTracksDrawerState();
 
   ids.forEach((videoId, i) => {
     const isCurrent = i === state.playlist.index;
@@ -1484,10 +1484,42 @@ function renderTrackList() {
     el.trackList.appendChild(li);
 
     // Keep the playing track visible as a playlist advances on its own.
-    if (isCurrent) {
-      requestAnimationFrame(() => li.scrollIntoView({ block: "nearest" }));
+    if (isCurrent) requestAnimationFrame(() => scrollTrackIntoList(li));
+  });
+}
+
+// Scrolls the list itself, never the page. scrollIntoView() would also move
+// the window, and with the list now in the player card that meant the page
+// jumping every time a playlist advanced on its own overnight.
+function scrollTrackIntoList(li) {
+  const list = el.trackList;
+  if (!list.clientHeight) return; // collapsed
+  const top = li.offsetTop;
+  const bottom = top + li.offsetHeight;
+  if (top < list.scrollTop) {
+    list.scrollTop = top;
+  } else if (bottom > list.scrollTop + list.clientHeight) {
+    list.scrollTop = bottom - list.clientHeight;
+  }
+}
+
+function applyTracksDrawerState() {
+  const open = state.settings.tracksOpen !== false;
+  el.trackListWrap.classList.toggle("collapsed", !open);
+  el.toggleTracksBtn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function attachTracksDrawerEvents() {
+  el.toggleTracksBtn.addEventListener("click", () => {
+    state.settings.tracksOpen = state.settings.tracksOpen === false;
+    saveSettings(state.settings);
+    applyTracksDrawerState();
+    if (state.settings.tracksOpen) {
+      const current = el.trackList.querySelector(".track-item.current");
+      if (current) scrollTrackIntoList(current);
     }
   });
+  el.savePlaylistBtn.addEventListener("click", savePlaylistToShortlist);
 }
 
 function playTrackAt(i) {
@@ -1500,6 +1532,12 @@ function playTrackAt(i) {
   // A track picked by hand shouldn't inherit an earlier run of auto-skips.
   state.skipStreak = 0;
   state.playlist.index = i;
+  // Saved here, not left to syncPlaylistState(): having already set the
+  // index above, the sync sees no movement and would never record it — so a
+  // refresh after picking a track by hand came back to the wrong one.
+  if (state.playlist.id) {
+    saveSession({ mode: "playlist", playlistId: state.playlist.id, index: i });
+  }
   renderTrackList();
   armPlaybackWatchdog();
 }
@@ -1631,16 +1669,18 @@ function decodeEntities(text) {
   return area.value;
 }
 
-async function youtubeSearch(query, type) {
+async function youtubeSearch(query) {
+  // Videos and playlists in one request: same 100 quota units as searching
+  // either alone. The cost is videoEmbeddable, which the API only accepts
+  // with type=video exactly, so an unembeddable video can now appear in
+  // results. The unplayable-video watchdog handles that if it's picked.
   const params = new URLSearchParams({
     part: "snippet",
     q: query,
-    type,
+    type: "video,playlist",
     maxResults: String(SEARCH_MAX_RESULTS),
     key: state.settings.apiKey.trim(),
   });
-  // Only offer results the embedded player can actually play.
-  if (type === "video") params.set("videoEmbeddable", "true");
 
   let res;
   try {
@@ -1658,7 +1698,10 @@ async function youtubeSearch(query, type) {
     if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
       throw new Error("Today's search quota is used up — it resets at midnight Pacific.");
     }
-    if (reason === "keyInvalid" || reason === "badRequest" || res.status === 400) {
+    const message = (data && data.error && data.error.message) || "";
+    // Only blame the key when Google does. A malformed query is also a 400,
+    // and calling that a bad key would send you chasing the wrong problem.
+    if (reason === "keyInvalid" || /api key/i.test(message)) {
       throw new Error("That API key was rejected. Check it in Settings.");
     }
     if (res.status === 403) {
@@ -1684,36 +1727,26 @@ function normalizeResult(item) {
   };
 }
 
-function resultPanelFor(kind) {
-  return kind === "video"
-    ? { wrap: el.videoResults, list: el.videoResultList, label: el.videoResultsLabel }
-    : { wrap: el.playlistResults, list: el.playlistResultList, label: el.playlistResultsLabel };
-}
-
-function showResultsMessage(kind, message) {
-  const panel = resultPanelFor(kind);
-  panel.wrap.hidden = false;
-  panel.list.innerHTML = "";
+function showResultsMessage(message) {
+  el.searchResults.hidden = false;
+  el.searchResultList.innerHTML = "";
   const li = document.createElement("li");
   li.className = "result-message";
   li.textContent = message;
-  panel.list.appendChild(li);
+  el.searchResultList.appendChild(li);
 }
 
-function clearResults(kind) {
+function clearResults() {
   // Bumping the token cancels an in-flight search, so results the user has
   // already dismissed can't reappear when the response lands.
   state.search.token += 1;
-  const panel = resultPanelFor(kind);
-  panel.wrap.hidden = true;
-  panel.list.innerHTML = "";
+  el.searchResults.hidden = true;
+  el.searchResultList.innerHTML = "";
 }
 
-// Shared entry point: validate, show progress, hand off to the renderer.
-async function runSearch(query, kind, inputEl) {
+async function runSearch(query) {
   if (!hasApiKey()) {
     showResultsMessage(
-      kind,
       "Searching needs a YouTube API key — add one in Settings (the gear, top right). Pasting links works without it."
     );
     return;
@@ -1723,33 +1756,34 @@ async function runSearch(query, kind, inputEl) {
   const token = ++state.search.token;
   state.search.busy = true;
 
-  const panel = resultPanelFor(kind);
-  panel.label.textContent = `Results for "${query}"`;
-  showResultsMessage(kind, "Searching…");
+  el.searchResultsLabel.textContent = `Results for "${query}"`;
+  showResultsMessage("Searching…");
 
   try {
-    const items = await youtubeSearch(query, kind === "video" ? "video" : "playlist");
+    const items = await youtubeSearch(query);
     if (token !== state.search.token) return; // a newer search won
-    if (items.length === 0) {
-      showResultsMessage(kind, `Nothing found for "${query}".`);
+    // Anything that's neither (a channel slipping through) has nothing to play.
+    const results = items.map(normalizeResult).filter((r) => r.videoId || r.playlistId);
+    if (results.length === 0) {
+      showResultsMessage(`Nothing found for "${query}".`);
       return;
     }
-    renderResults(kind, items.map(normalizeResult));
+    renderResults(results);
   } catch (e) {
     if (token !== state.search.token) return;
-    showResultsMessage(kind, e.message);
-    flashInvalid(inputEl);
+    showResultsMessage(e.message);
+    flashInvalid(el.addInput);
   } finally {
     state.search.busy = false;
   }
 }
 
-function renderResults(kind, results) {
-  const panel = resultPanelFor(kind);
-  panel.wrap.hidden = false;
-  panel.list.innerHTML = "";
+function renderResults(results) {
+  el.searchResults.hidden = false;
+  el.searchResultList.innerHTML = "";
 
   results.forEach((r) => {
+    const isPlaylist = !!r.playlistId;
     const li = document.createElement("li");
     li.className = "result-item";
 
@@ -1774,76 +1808,62 @@ function renderResults(kind, results) {
 
     const channel = document.createElement("div");
     channel.className = "res-channel";
-    channel.textContent = r.channel;
+    channel.textContent = isPlaylist ? `Playlist · ${r.channel}` : r.channel;
 
     text.appendChild(title);
     text.appendChild(channel);
     li.appendChild(text);
 
-    if (kind === "video") {
-      // Clicking plays it straight away; saving is the deliberate extra step.
-      li.title = "Play now";
-      li.addEventListener("click", () => playSingleVideo(r.videoId, r.title));
+    // Clicking plays it straight away; saving is the deliberate extra step.
+    li.title = isPlaylist ? "Play this playlist" : "Play now";
+    li.addEventListener("click", () => {
+      if (isPlaylist) playPlaylistById(r.playlistId);
+      else playSingleVideo(r.videoId, r.title);
+    });
 
-      const save = document.createElement("button");
-      save.type = "button";
-      save.className = "res-save";
-      save.textContent = "Save";
-      save.title = "Add to My Soundscapes";
-      save.addEventListener("click", (e) => {
-        e.stopPropagation();
-        saveSearchResult(r, save);
-      });
-      li.appendChild(save);
-    } else {
-      li.title = "Load this playlist";
-      li.addEventListener("click", () => {
-        playPlaylistById(r.playlistId);
-        el.playlistUrl.value = "";
-      });
-    }
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "res-save";
+    save.title = "Add to your library";
+    const saved = isResultSaved(r);
+    save.textContent = saved ? "Saved" : "Save";
+    save.disabled = saved;
+    save.addEventListener("click", (e) => {
+      e.stopPropagation();
+      saveSearchResult(r, save);
+    });
+    li.appendChild(save);
 
-    panel.list.appendChild(li);
+    el.searchResultList.appendChild(li);
   });
 }
 
+function isResultSaved(result) {
+  return result.playlistId
+    ? playlistIsSaved(result.playlistId)
+    : state.shortlist.some((x) => x.videoId === result.videoId);
+}
+
 function saveSearchResult(result, button) {
-  const already = state.shortlist.some((x) => x.videoId === result.videoId);
-  if (already) {
-    button.textContent = "Saved";
-    button.disabled = true;
-    return;
+  if (!isResultSaved(result)) {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // Search hands us the playlist's real title, which matters for the
+    // auto-generated ones oEmbed can't name.
+    state.shortlist.push(
+      result.playlistId
+        ? { id, kind: "playlist", title: result.title, playlistId: result.playlistId, url: playlistUrlFor(result.playlistId) }
+        : { id, kind: "video", title: result.title, videoId: result.videoId, url: `https://www.youtube.com/watch?v=${result.videoId}` }
+    );
+    saveShortlist(state.shortlist);
+    renderShortlist();
+    updateSavePlaylistBtn();
   }
-  state.shortlist.push({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title: result.title,
-    videoId: result.videoId,
-    url: `https://www.youtube.com/watch?v=${result.videoId}`,
-  });
-  saveShortlist(state.shortlist);
-  renderShortlist();
   button.textContent = "Saved";
   button.disabled = true;
 }
 
 function attachSearchEvents() {
-  el.savePlaylistBtn.addEventListener("click", savePlaylistToShortlist);
-  el.videoResultsClose.addEventListener("click", () => clearResults("video"));
-  el.playlistResultsClose.addEventListener("click", () => clearResults("playlist"));
-}
-
-// ---------- Tabs ----------
-
-function activateTab(name) {
-  el.tabBtns.forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-  document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
-  document.getElementById(`tab-${name}`).classList.remove("hidden");
-}
-
-function attachTabEvents() {
-  el.tabBtns.forEach((btn) => {
-    btn.addEventListener("click", () => activateTab(btn.dataset.tab));
-  });
+  el.searchResultsClose.addEventListener("click", clearResults);
 }
 
 // ---------- Settings overlay ----------
@@ -1909,9 +1929,8 @@ function init() {
   attachScrubEvents();
   attachTransportEvents();
   attachTimerEvents();
-  attachShortlistEvents();
-  attachPlaylistFormEvents();
-  attachTabEvents();
+  attachAddFormEvents();
+  attachTracksDrawerEvents();
   attachSettingsEvents();
   attachVideoToggleEvents();
   attachSearchEvents();

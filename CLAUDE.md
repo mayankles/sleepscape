@@ -28,9 +28,11 @@ browser's `localStorage` — nothing is sent to a server.
   instance).
 - `app.js` is organized into clearly commented sections: Persistence,
   YouTube URL parsing, App state, DOM refs, YouTube player, Scrub bar,
-  Transport controls, Sleep timer, Sleep timer: exact-length setter,
-  Shortlist, Playlist track list, Tabs, Settings overlay, Init. Keep new
-  code in the matching section rather than appending to the bottom.
+  Transport controls, Keyboard shortcuts, Sleep timer, Sleep timer:
+  exact-length setter, Shortlist, Playlist track list, YouTube search,
+  Settings overlay, Init. Keep new code in the matching section rather than
+  appending to the bottom. The code still says "shortlist" for what the UI
+  now calls the Library; renaming it everywhere wasn't worth the churn.
 - Dark, low-stimulation UI on purpose (this runs at bedtime) — see the CSS
   custom properties at the top of `style.css` before introducing new
   colors. The theme is "warm twilight": deliberately amber/rose rather than
@@ -67,6 +69,49 @@ Shipped (v1):
   a separate "paste a playlist URL" flow, with ⏮/⏭ in playlist mode.
 - Settings overlay: default timer length, fade-out length, skip step,
   auto-arm on/off.
+
+Shipped (v1.8) — Library and a tracks drawer, instead of tabs:
+
+- **The two tabs are gone.** They split things by where they came from
+  ("My Soundscapes" vs "Playlists"), which made changing track mean
+  switching tabs away from the player. The layout now splits by role:
+  the **player card** holds whatever is playing, including its track list,
+  and a single **Library card** holds everything saved plus one add field.
+  Mentions of tabs in the older entries below are historical.
+- **The track list lives in the player card**, between the transport and
+  the sleep timer, as a collapsible drawer (`.tracks-drawer`). The header
+  toggles it, and `settings.tracksOpen` remembers the choice — it defaults
+  to open because easy track changes are the point. "Save playlist" moved
+  into that header, since it acts on what's playing.
+- **The current track scrolls within the list, never the page.**
+  `scrollTrackIntoList()` adjusts `trackList.scrollTop` directly, and
+  `.track-list` is `position: relative` so row `offsetTop`s are measured
+  from the list. The old `scrollIntoView()` also scrolled the window; in
+  the player card that meant the page jumping every time a playlist
+  advanced by itself overnight. Don't reintroduce it.
+- **One add field** (`attachAddFormEvents()`) routes on what it's given:
+  a playlist link loads and plays; a video link saves to the Library;
+  something that only looks like a link is flagged; anything else searches.
+  The old separate "Name" input is gone — rename covers it.
+  - A watch URL carrying both `v=` and `list=` loads the playlist and then
+    jumps to that video. `loadPlaylist()` only takes an index, so the video
+    id is parked in `state.playlist.pendingStartVideoId` and resolved in
+    `syncPlaylistState()` once the track order is trusted. If the video
+    isn't in that run of the playlist (auto-generated ones reshuffle) it
+    just plays from the top.
+  - A bare 11-character string is always treated as a video ID, even if
+    it starts with a playlist prefix like `PL` — `parsePlaylistId()`'s bare
+    form would otherwise claim it.
+- **Search returns videos and playlists together**: one `search.list` with
+  `type=video,playlist`, the same 100 quota units as before. The trade-off
+  is `videoEmbeddable`, which the API only accepts alongside `type=video`
+  exactly, so unembeddable videos can now appear in results; the
+  unplayable-video watchdog covers one being picked. Playlist results can be
+  saved too, and keep the real title search gives them.
+- The key-rejected message now fires only on `keyInvalid` or an error
+  message that mentions the API key. It used to fire on *any* 400, which
+  would have blamed the key for a malformed query — and the query shape
+  changed here without a real key to test it against.
 
 Shipped (v1.7) — persistence, timer follows playback, keyboard:
 
@@ -360,6 +405,9 @@ There's no test suite. When changing `app.js`, at minimum:
   standing fixture. Test *both* routes: clicking it directly, and natural
   advance (play track 2, `seekTo(getDuration() - 3)`, wait ~10s). They take
   different code paths and only the second one matters overnight.
+- For the tracks drawer, check the page does **not** scroll when a playlist
+  advances or you jump tracks — only the list should. Also collapse it,
+  reload, and confirm it stays collapsed.
 - When touching playlist loading, always test *switching between* playlists,
   not just loading one. A single load looks correct even when switching is
   broken — that's exactly how the one-playlist-behind bug survived.
@@ -369,8 +417,7 @@ There's no test suite. When changing `app.js`, at minimum:
   throwing. After a drag, confirm no row is left with `draggable` still
   true and no stray `drop-before`/`drop-after` marker remains.
 - The keyboard layer's guards are the part that breaks: check that Space
-  typed into the Name field doesn't pause, that arrows in the URL field
-  don't seek, that shortcuts do nothing while Settings is open, and that
+  typed into the add field doesn't pause, that arrows in it don't seek, that shortcuts do nothing while Settings is open, and that
   arrows on a focused grip reorder rather than seek.
 - For session restore, check the player comes back **CUED and not PLAYING**.
   Autoplaying on load is the failure mode that actually matters here.
